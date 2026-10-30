@@ -58,6 +58,7 @@ kotlin {
 tasks.test {
     useJUnitPlatform()
     testLogging {
+        events("passed", "skipped", "failed")
         exceptionFormat = TestExceptionFormat.FULL
     }
 }
