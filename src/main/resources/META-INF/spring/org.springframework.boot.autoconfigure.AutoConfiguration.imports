@@ -1,0 +1,4 @@
+pl.allegro.tech.queuewaittime.tomcat.TomcatQueueWaitTimeAutoConfiguration
+pl.allegro.tech.queuewaittime.netty.nettyserver.ReactorNettyQueueWaitTimeAutoConfiguration
+pl.allegro.tech.queuewaittime.netty.mongoclient.ReactiveMongoQueueWaitTimeAutoConfiguration
+pl.allegro.tech.queuewaittime.webclient.WebClientQueueWaitTimeAutoConfiguration

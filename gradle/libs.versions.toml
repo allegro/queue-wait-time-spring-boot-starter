@@ -1,0 +1,33 @@
+[versions]
+kotlin = "2.2.21"
+spring-boot = "4.1.2"
+
+# plugins
+axion-release-plugin = "1.21.4"
+nexus-publish-plugin = "2.0.0"
+
+[libraries]
+spring-boot-dependencies = { group = "org.springframework.boot", name = "spring-boot-dependencies", version.ref = "spring-boot" }
+spring-boot-test = { group = "org.springframework.boot", name = "spring-boot-test" }
+spring-boot-micrometer-metrics = { group = "org.springframework.boot", name = "spring-boot-micrometer-metrics" }
+spring-boot-starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
+spring-boot-starter-webflux = { group = "org.springframework.boot", name = "spring-boot-starter-webflux" }
+spring-boot-starter-webclient = { group = "org.springframework.boot", name = "spring-boot-starter-webclient" }
+spring-boot-starter-mongodb-reactive = { group = "org.springframework.boot", name = "spring-boot-starter-data-mongodb-reactive" }
+spring-boot-autoconfigure = { group = "org.springframework.boot", name = "spring-boot-autoconfigure" }
+spring-boot-tomcat = { group = "org.springframework.boot", name = "spring-boot-tomcat" }
+spring-boot-reactor-netty = { group = "org.springframework.boot", name = "spring-boot-reactor-netty" }
+spring-boot-webclient = { group = "org.springframework.boot", name = "spring-boot-webclient" }
+spring-boot-mongodb = { group = "org.springframework.boot", name = "spring-boot-mongodb" }
+mongodb-driver-reactivestreams = { group = "org.mongodb", name = "mongodb-driver-reactivestreams" }
+micrometer = { group = "io.micrometer", name = "micrometer-core" }
+netty-transport = { group = "io.netty", name = "netty-transport" }
+
+# TESTING
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher" }
+awaitility = { group = "org.awaitility", name = "awaitility" }
+
+[plugins]
+axion-release = { id = "pl.allegro.tech.build.axion-release", version.ref = "axion-release-plugin" }
+nexus-publish = { id = "io.github.gradle-nexus.publish-plugin", version.ref = "nexus-publish-plugin" }
