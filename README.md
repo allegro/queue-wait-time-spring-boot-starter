@@ -241,13 +241,12 @@ responsibility.
 
 ## Known limitations
 
-- **Tomcat virtual-thread scheduling:** `executor.queue.wait.time` measures only the initial
-  delay between submitting a request task and starting its execution on a virtual
-  thread. It does not instrument the virtual-thread scheduler. When a virtual
-  thread unmounts from a carrier thread, for example while waiting for I/O, any
-  later scheduling delay before it is mounted again and resumes execution is not
-  recorded by this metric. A low initial queue wait time therefore does not rule
-  out scheduling delays later in the request's lifetime.
+- **Tomcat virtual-thread metrics:** `executor.queue.wait.time` measures the initial
+  task-start delay. Separately, `scheduler.lag` with
+  `type=VirtualThreadDefaultScheduler` samples lag in the shared default scheduler
+  used by Tomcat and other virtual threads. It is enabled when Spring virtual threads and
+  scheduler monitoring are enabled. This is a scheduler-wide signal, not an exact
+  measurement of each request's rescheduling delays.
 - **MongoDB transport customization:** Monitoring configures its own Netty
   transport and can overwrite transport settings applied by an earlier
   `MongoClientSettingsBuilderCustomizer`, including a custom scheduler group or
