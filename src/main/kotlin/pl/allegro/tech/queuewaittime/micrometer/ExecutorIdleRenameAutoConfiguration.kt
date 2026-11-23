@@ -6,9 +6,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 
-@AutoConfiguration(
-    beforeName = ["org.springframework.boot.micrometer.metrics.autoconfigure.CompositeMeterRegistryAutoConfiguration"],
-)
+@AutoConfiguration
 @ConditionalOnClass(MeterFilter::class)
 @ConditionalOnProperty(
     prefix = "allegro-tech",

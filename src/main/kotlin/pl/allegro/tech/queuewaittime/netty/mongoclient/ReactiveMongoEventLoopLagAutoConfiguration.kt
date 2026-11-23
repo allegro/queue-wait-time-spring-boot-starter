@@ -32,7 +32,6 @@ import reactor.core.publisher.Flux
         MultiThreadIoEventLoopGroup::class,
         NioIoHandler::class,
     ],
-    name = ["io.netty.handler.ssl.SslContext"],
 )
 @ConditionalOnBean(MeterRegistry::class)
 @ConditionalOnMissingBean(MongoClientSettings::class)
