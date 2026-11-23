@@ -14,21 +14,21 @@ class SchedulerLagSampleRecorder(
 ) {
 
     private val unhealthyCounter = Counter.builder("scheduler.sample")
-        .description("Number of sampling windows lost due to unhealthy scheduler lag")
+        .description("Interval: ${interval.toMillis()} ms. Number of sampling windows lost due to unhealthy scheduler lag")
         .tag("executor", executor)
         .tag("type", type)
         .tag("status", "unhealthy")
         .register(meterRegistry)
 
     private val healthyCounter = Counter.builder("scheduler.sample")
-        .description("Number of samples with healthy scheduler lag")
+        .description("Interval: ${interval.toMillis()} ms. Number of samples with healthy scheduler lag")
         .tag("executor", executor)
         .tag("type", type)
         .tag("status", "healthy")
         .register(meterRegistry)
 
     private val unhealthyTimer = Timer.builder("scheduler.lag")
-        .description("Scheduling delay distribution for unhealthy scheduler samples")
+        .description("Interval: ${interval.toMillis()} ms. Scheduling delay distribution for unhealthy scheduler samples")
         .tag("executor", executor)
         .tag("type", type)
         .tag("status", "unhealthy")
