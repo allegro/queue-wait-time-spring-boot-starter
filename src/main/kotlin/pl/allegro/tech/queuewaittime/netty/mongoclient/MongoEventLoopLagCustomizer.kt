@@ -8,14 +8,14 @@ import io.netty.channel.MultiThreadIoEventLoopGroup
 import io.netty.channel.nio.NioIoHandler
 import org.springframework.beans.factory.DisposableBean
 import org.springframework.boot.mongodb.autoconfigure.MongoClientSettingsBuilderCustomizer
-import pl.allegro.tech.queuewaittime.netty.EventLoopLagMonitor
-import pl.allegro.tech.queuewaittime.netty.EventLoopLagProperties
+import pl.allegro.tech.queuewaittime.netty.NettySchedulerLagMonitor
+import pl.allegro.tech.queuewaittime.schedulerlag.SchedulerLagProperties
 
 internal class MongoEventLoopLagCustomizer(
     meterRegistry: MeterRegistry,
-    properties: EventLoopLagProperties,
+    properties: SchedulerLagProperties,
 ) : MongoClientSettingsBuilderCustomizer, DisposableBean {
-    private val monitor = EventLoopLagMonitor(meterRegistry, properties.interval, "mongo")
+    private val monitor = NettySchedulerLagMonitor(meterRegistry, properties.interval, "mongo")
 
     private var eventLoopGroup: EventLoopGroup? = null
 

@@ -8,10 +8,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication
-import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.reactor.netty.NettyServerCustomizer
 import org.springframework.context.annotation.Bean
-import pl.allegro.tech.queuewaittime.netty.EventLoopLagProperties
+import pl.allegro.tech.queuewaittime.schedulerlag.SchedulerLagProperties
 import reactor.netty.http.server.HttpServer
 
 @AutoConfiguration(
@@ -21,16 +20,15 @@ import reactor.netty.http.server.HttpServer
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.REACTIVE)
 @ConditionalOnBean(MeterRegistry::class)
 @ConditionalOnProperty(
-    prefix = "allegro-tech.event-loop-lag",
+    prefix = "allegro-tech.scheduler-lag",
     name = ["enabled"],
     havingValue = "true",
     matchIfMissing = true,
 )
-@EnableConfigurationProperties(EventLoopLagProperties::class)
-class ReactorNettyQueueWaitTimeAutoConfiguration {
+class ReactorNettyEventLoopLagAutoConfiguration {
     @Bean
     fun reactorNettyServerEventLoopLagCustomizer(
         meterRegistry: ObjectProvider<MeterRegistry>,
-        properties: EventLoopLagProperties,
+        properties: SchedulerLagProperties,
     ): NettyServerCustomizer = ReactorNettyServerEventLoopLagCustomizer(meterRegistry.getObject(), properties)
 }

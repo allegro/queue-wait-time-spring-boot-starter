@@ -1,0 +1,28 @@
+{
+  "properties": [
+    {
+      "name": "allegro-tech.scheduler-lag.enabled",
+      "type": "java.lang.Boolean",
+      "defaultValue": true,
+      "description": "Enable scheduler lag monitoring."
+    },
+    {
+      "name": "allegro-tech.scheduler-lag.interval",
+      "type": "java.time.Duration",
+      "defaultValue": "10ms",
+      "description": "Sampling interval for scheduler lag monitors. Must be positive."
+    },
+    {
+      "name": "allegro-tech.tomcat.queue-wait-time.enabled",
+      "type": "java.lang.Boolean",
+      "defaultValue": true,
+      "description": "Enable queue wait time monitoring for Tomcat platform and virtual threads."
+    },
+    {
+      "name": "allegro-tech.rename-executor-idle-to-executor-queue-wait-time",
+      "type": "java.lang.Boolean",
+      "defaultValue": true,
+      "description": "Rename executor.idle to executor.queue.wait.time."
+    }
+  ]
+}

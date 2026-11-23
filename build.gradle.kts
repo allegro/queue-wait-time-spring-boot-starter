@@ -57,6 +57,11 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+    jvmArgs(
+        // Always 1 carrier thread for VirtualThreads testing
+        "-Djdk.virtualThreadScheduler.parallelism=1",
+        "-Djdk.virtualThreadScheduler.maxPoolSize=1",
+    )
     testLogging {
         events("passed", "skipped", "failed")
         exceptionFormat = TestExceptionFormat.FULL

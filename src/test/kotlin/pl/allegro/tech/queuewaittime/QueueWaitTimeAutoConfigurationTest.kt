@@ -13,25 +13,31 @@ import org.springframework.boot.micrometer.metrics.autoconfigure.export.simple.S
 import org.springframework.boot.test.context.FilteredClassLoader
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.boot.test.context.runner.ReactiveWebApplicationContextRunner
-import pl.allegro.tech.queuewaittime.netty.EventLoopLagProperties
-import pl.allegro.tech.queuewaittime.netty.mongoclient.ReactiveMongoQueueWaitTimeAutoConfiguration
-import pl.allegro.tech.queuewaittime.netty.nettyserver.ReactorNettyQueueWaitTimeAutoConfiguration
+import pl.allegro.tech.queuewaittime.micrometer.ExecutorIdleRenameAutoConfiguration
+import pl.allegro.tech.queuewaittime.schedulerlag.SchedulerLagProperties
+import pl.allegro.tech.queuewaittime.schedulerlag.SchedulerLagPropertiesConfiguration
+import pl.allegro.tech.queuewaittime.netty.mongoclient.ReactiveMongoEventLoopLagAutoConfiguration
+import pl.allegro.tech.queuewaittime.netty.nettyserver.ReactorNettyEventLoopLagAutoConfiguration
 import pl.allegro.tech.queuewaittime.tomcat.TomcatQueueWaitTimeAutoConfiguration
+import pl.allegro.tech.queuewaittime.virtualthreads.VirtualThreadsSchedulerLagConfiguration
 import pl.allegro.tech.queuewaittime.webclient.WebClientQueueWaitTimeAutoConfiguration
 import java.util.function.Supplier
 
 internal class QueueWaitTimeAutoConfigurationTest {
     private val configurations = arrayOf(
         TomcatQueueWaitTimeAutoConfiguration::class.java,
-        ReactorNettyQueueWaitTimeAutoConfiguration::class.java,
-        ReactiveMongoQueueWaitTimeAutoConfiguration::class.java,
+        ReactorNettyEventLoopLagAutoConfiguration::class.java,
+        ReactiveMongoEventLoopLagAutoConfiguration::class.java,
         WebClientQueueWaitTimeAutoConfiguration::class.java,
+        VirtualThreadsSchedulerLagConfiguration::class.java,
+        SchedulerLagPropertiesConfiguration::class.java,
+        ExecutorIdleRenameAutoConfiguration::class.java,
     )
     private val contextRunner = ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(*configurations))
 
     @Test
-    fun registersAllFourIntegrations() {
+    fun registersAllAutoConfigurations() {
         val imports = ImportCandidates.load(AutoConfiguration::class.java, javaClass.classLoader)
             .filter { it.startsWith("pl.allegro.tech.queuewaittime.") }
 
@@ -57,6 +63,7 @@ internal class QueueWaitTimeAutoConfigurationTest {
             )
             .run { context ->
                 assertThat(context).hasNotFailed()
+                assertThat(context).doesNotHaveBean("executorIdleRenameMeterFilter")
                 assertThat(context).doesNotHaveBean("tomcatPlatformThreadsWebServerCustomizer")
                 assertThat(context).doesNotHaveBean("tomcatVirtualThreadsWebServerCustomizer")
                 assertThat(context).doesNotHaveBean("reactorNettyServerEventLoopLagCustomizer")
@@ -86,7 +93,7 @@ internal class QueueWaitTimeAutoConfigurationTest {
         ReactiveWebApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(*configurations))
             .withBean(MeterRegistry::class.java, Supplier { SimpleMeterRegistry() })
-            .withPropertyValues("allegro-tech.event-loop-lag.enabled=false")
+            .withPropertyValues("allegro-tech.scheduler-lag.enabled=false")
             .run { context ->
                 assertThat(context).hasNotFailed()
                 assertThat(context).doesNotHaveBean("reactorNettyServerEventLoopLagCustomizer")
@@ -110,7 +117,7 @@ internal class QueueWaitTimeAutoConfigurationTest {
             .run { context ->
                 assertThat(context).hasNotFailed()
                 assertThat(context).hasSingleBean(MeterRegistry::class.java)
-                assertThat(context).hasSingleBean(EventLoopLagProperties::class.java)
+                assertThat(context).hasSingleBean(SchedulerLagProperties::class.java)
                 assertThat(context).hasBean("tomcatPlatformThreadsWebServerCustomizer")
                 assertThat(context).hasBean("reactorNettyServerEventLoopLagCustomizer")
                 assertThat(context).hasBean("mongoEventLoopLagCustomizer")
