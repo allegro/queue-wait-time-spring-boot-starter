@@ -1,6 +1,6 @@
 [versions]
 kotlin = "2.2.21"
-spring-boot = "4.1.2"
+spring-boot = "4.2.0"
 
 # plugins
 axion-release-plugin = "1.21.4"
