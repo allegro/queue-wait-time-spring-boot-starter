@@ -15,14 +15,20 @@ import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.boot.mongodb.autoconfigure.MongoClientSettingsBuilderCustomizer
 import org.springframework.boot.test.context.FilteredClassLoader
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
-import pl.allegro.tech.queuewaittime.netty.EventLoopLagProperties
+import pl.allegro.tech.queuewaittime.schedulerlag.SchedulerLagProperties
+import pl.allegro.tech.queuewaittime.schedulerlag.SchedulerLagPropertiesConfiguration
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 import java.util.function.Supplier
 
-internal class ReactiveMongoQueueWaitTimeAutoConfigurationTest {
+internal class ReactiveMongoEventLoopLagAutoConfigurationTest {
     private val baseContextRunner = ApplicationContextRunner()
-        .withConfiguration(AutoConfigurations.of(ReactiveMongoQueueWaitTimeAutoConfiguration::class.java))
+        .withConfiguration(
+            AutoConfigurations.of(
+                ReactiveMongoEventLoopLagAutoConfiguration::class.java,
+                SchedulerLagPropertiesConfiguration::class.java,
+            )
+        )
     private val contextRunner = baseContextRunner
         .withBean(MeterRegistry::class.java, Supplier { SimpleMeterRegistry() })
 
@@ -45,7 +51,7 @@ internal class ReactiveMongoQueueWaitTimeAutoConfigurationTest {
 
             await().atMost(Duration.ofSeconds(5)).untilAsserted {
                 val timers = context.getBean<MeterRegistry>()
-                    .find("event_loop.lag").tag("type", "mongo").timers()
+                    .find("scheduler.lag").tag("type", "mongo").timers()
                 assertThat(timers).isNotEmpty
                 assertThat(context.getBean<MeterRegistry>().find("eventLoop").timers()).isEmpty()
                 assertThat(context.getBean<MeterRegistry>().find("event.loop.lag").timers()).isEmpty()
@@ -63,9 +69,9 @@ internal class ReactiveMongoQueueWaitTimeAutoConfigurationTest {
     @Test
     fun bindsTheSharedSamplingProperties() {
         contextRunner
-            .withPropertyValues("allegro-tech.event-loop-lag.interval=25ms")
+            .withPropertyValues("allegro-tech.scheduler-lag.interval=25ms")
             .run { context ->
-                assertThat(context.getBean<EventLoopLagProperties>().interval)
+                assertThat(context.getBean<SchedulerLagProperties>().interval)
                     .isEqualTo(Duration.ofMillis(25))
             }
     }
@@ -73,7 +79,7 @@ internal class ReactiveMongoQueueWaitTimeAutoConfigurationTest {
     @Test
     fun canDisableMongoMonitoring() {
         contextRunner
-            .withPropertyValues("allegro-tech.event-loop-lag.enabled=false")
+            .withPropertyValues("allegro-tech.scheduler-lag.enabled=false")
             .run { context ->
                 assertThat(context).hasNotFailed()
                 assertThat(context).doesNotHaveBean(MongoClientSettingsBuilderCustomizer::class.java)

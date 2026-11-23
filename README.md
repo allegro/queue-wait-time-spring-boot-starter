@@ -38,15 +38,19 @@ remain unchanged.
 
 ## Metrics
 
-| Integration                  | Measurement                                                                | Micrometer timer                                                                       |
-|------------------------------|----------------------------------------------------------------------------|----------------------------------------------------------------------------------------|
-| Tomcat platform threads      | Time between submitting a request task and starting its execution          | `executor.idle`(yes, it's queue wait time), tagged with `name=tomcat`                  |
-| Tomcat virtual threads       | Initial delay between submitting a request task and starting its execution | `executor.idle` (yes, it's queue wait time), tagged with `name=tomcat-virtual-threads` |
-| Reactor Netty server         | Positive event-loop scheduling lag, sampled every 10 ms by default         | `event_loop.lag`, tagged with `executor` and `type=server`                             |
-| Reactive MongoDB             | Positive event-loop scheduling lag, sampled every 10 ms by default         | `event_loop.lag`, tagged with `executor` and `type=mongo`                              |
-| WebClient with Reactor Netty | Time from exchange subscription until Reactor Netty's request callback     | `webclient_queue_wait_time`                                                            |
+| Integration                      | Measurement                                                                | Micrometer timer                                                                                         |
+|----------------------------------|----------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| Tomcat platform threads          | Time between submitting a request task and starting its execution          | `executor.queue.wait.time`, tagged with `name=tomcat`                                                    |
+| Tomcat virtual threads           | Initial delay between submitting a request task and starting its execution | `executor.queue.wait.time`, tagged with `name=tomcat-virtual-threads`                                    |
+| Default virtual-thread scheduler | Positive Scheduler lag, sampled every 10 ms by default                     | `scheduler.lag`, tagged with `executor` and `type=VirtualThreadDefaultScheduler`, and `status=unhealthy` |
+| Reactor Netty server scheduler   | Positive scheduler lag, sampled every 10 ms by default                     | `scheduler.lag`, tagged with `executor`, `type=server`, and `status=unhealthy`                           |
+| Reactive MongoDB scheduler       | Positive scheduler lag, sampled every 10 ms by default                     | `scheduler.lag`, tagged with `executor`, `type=mongo`, and `status=unhealthy`                            |
+| WebClient with Reactor Netty     | Time from exchange subscription until Reactor Netty's request callback     | `webclient_queue_wait_time`                                                                              |
 
-Event-loop lag measures scheduling delays, not exact per-request queue wait time.
+Scheduler lag measures scheduling delays, not exact per-request queue wait time.
+The `scheduler.sample` counters use `executor`, `type`, and
+`status=healthy` or `status=unhealthy` tags. The `scheduler.lag` timer
+records only unhealthy samples and uses `status=unhealthy`.
 Tomcat uses Micrometer to measure both task waiting time and task execution
 time. Platform and virtual thread monitoring follow
 `spring.threads.virtual.enabled`.
@@ -88,7 +92,7 @@ profiling, they help you:
   improves latency under load, including the slowest requests.
 
 The signals have different boundaries: Tomcat measures time waiting for a thread.
-Event-loop lag indicates scheduling delays, not exact queue time for each request.
+Scheduler lag indicates scheduling delays, not exact queue time for each request.
 The WebClient metric approximates the interval before an outbound request is sent
 (see [Known limitations](#known-limitations)). These signals complement
 response-time metrics; they are not
@@ -97,7 +101,7 @@ percentiles.
 
 ### Taming queues
 
-When queueing or event-loop lag contributes to latency during normal application
+When queueing or scheduler lag contributes to latency during normal application
 traffic, consider isolating work rather than letting unrelated operations compete
 for the same worker pool:
 
@@ -108,7 +112,7 @@ for the same worker pool:
   processing vertically into stages connected by queues, with separate worker
   pools for individual stages.
 
-Both approaches can be combined. Use queue wait time, event-loop lag, and
+Both approaches can be combined. Use queue wait time, scheduler lag, and
 response-time metrics to verify whether isolation improves latency; moving work
 to another queue does not by itself increase processing capacity.
 
@@ -130,22 +134,77 @@ workload isolation or context propagation.
 
 Set this property to `false` to leave Spring Boot's Tomcat thread configuration unchanged.
 
-## Event-loop lag configuration
+## Micrometer executor metric naming
 
-The same settings control Reactor Netty server and reactive MongoDB event-loop
-monitoring. They do not affect Tomcat thread monitoring.
+By default, a `MeterFilter` renames `executor.idle` to `executor.queue.wait.time`
+in Spring Boot-managed meter registries. It applies to every meter with that
+exact name, not only Tomcat metrics, and preserves tags and measurements.
 
-| Property                               | Default | Description                                              |
-|----------------------------------------|---------|----------------------------------------------------------|
-| `allegro-tech.event-loop-lag.enabled`  | `true`  | Enable server and reactive MongoDB event-loop monitoring |
-| `allegro-tech.event-loop-lag.interval` | `10ms`  | Positive sampling interval for both integrations         |
+| Property                                                        | Default | Description                                         |
+|-----------------------------------------------------------------|---------|-----------------------------------------------------|
+| `allegro-tech.rename-executor-idle-to-executor-queue-wait-time` | `true`  | Rename Micrometer's executor queue wait time metric |
+
+Set the flag to `false` to retain the original `executor.idle` name:
 
 ```yaml
 allegro-tech:
-  event-loop-lag:
+  rename-executor-idle-to-executor-queue-wait-time: false
+```
+
+## Scheduler lag configuration
+
+The same settings control Reactor Netty server, reactive MongoDB, and the default
+virtual-thread scheduler monitoring. They do not affect Tomcat queue wait time
+monitoring.
+
+Virtual-thread scheduler monitoring starts when `spring.threads.virtual.enabled=true`
+and a `MeterRegistry` is available. It also works in non-web Spring applications.
+The sampling probe is stopped when the application context closes.
+
+| Property                              | Default | Description                                           |
+|---------------------------------------|---------|-------------------------------------------------------|
+| `allegro-tech.scheduler-lag.enabled`  | `true`  | Enable scheduler lag monitoring                       |
+| `allegro-tech.scheduler-lag.interval` | `10ms`  | Positive sampling interval for all scheduler monitors |
+
+```yaml
+allegro-tech:
+  scheduler-lag:
     enabled: true
     interval: 10ms
 ```
+
+### Interpreting scheduler samples
+
+`diff` is the gap between probe measurements, not task execution time.
+We require two missed nominal sampling windows to confidently flag scheduler
+occupancy longer than one interval. For `interval=10ms`, this sets the cutoff at
+`2 × 10ms = 20ms`:
+
+- `diff ≤ 20ms`: `healthy`, sample counter `+1`.
+- `diff > 20ms`: `unhealthy`, sample counter `+floor(diff / interval)`.
+
+Only unhealthy samples update `scheduler.lag`, recording `diff - 2 × interval`.
+Example: a 67ms gap adds six unhealthy windows and records 47ms of lag.
+
+### Window-based ratios
+
+Calculate ratios from counter rates over the same observation window and for the
+same executor/type grouping:
+
+```text
+total_rate = healthy_rate + unhealthy_rate
+healthy_ratio = healthy_rate / total_rate
+unhealthy_ratio = unhealthy_rate / total_rate
+```
+
+These ratios describe weighted sampling windows, not the number of probe
+executions or an exact fraction of wall-clock time. A 100ms gap contributes ten
+unhealthy windows, while each healthy observation contributes one.
+Interpret the ratios only when `total_rate > 0`.
+
+Normal fixed-delay or sleep-based sampling often produces gaps slightly above
+the configured interval. These samples remain healthy within the two-interval
+tolerance; a small timing overshoot alone is not evidence of an unhealthy scheduler.
 
 ## WebClient monitoring
 
@@ -159,7 +218,7 @@ works in applications without a web server.
 Every outbound request attempt reaching Reactor Netty's `doOnRequest` callback is
 measured, without requiring a special header. The interval starts on subscription
 and ends when Reactor Netty is about to send the request. Without automatic
-redirects, it does not include waiting for the response. It is not pure event-loop
+redirects, it does not include waiting for the response. It is not pure scheduler
 queue time; see [Known limitations](#known-limitations) for redirect behavior.
 
 Clients created with `WebClient.create()` or manually supplied builders/connectors
@@ -173,7 +232,7 @@ Mongo monitoring requires the reactive MongoDB driver, Micrometer, and Netty.
 For Mongo-only applications, add `io.netty:netty-handler` as well as the reactive
 MongoDB starter; WebFlux applications using Reactor Netty already provide it.
 The starter supplies a monitored Netty transport through a
-`MongoClientSettingsBuilderCustomizer` and closes its event-loop group when the
+`MongoClientSettingsBuilderCustomizer` and closes its scheduler group when the
 application context shuts down.
 
 Applications supplying their own `MongoClientSettings` are left unchanged.
@@ -182,7 +241,7 @@ responsibility.
 
 ## Known limitations
 
-- **Tomcat virtual-thread scheduling:** `executor.idle` measures only the initial
+- **Tomcat virtual-thread scheduling:** `executor.queue.wait.time` measures only the initial
   delay between submitting a request task and starting its execution on a virtual
   thread. It does not instrument the virtual-thread scheduler. When a virtual
   thread unmounts from a carrier thread, for example while waiting for I/O, any
@@ -191,7 +250,7 @@ responsibility.
   out scheduling delays later in the request's lifetime.
 - **MongoDB transport customization:** Monitoring configures its own Netty
   transport and can overwrite transport settings applied by an earlier
-  `MongoClientSettingsBuilderCustomizer`, including a custom event-loop group or
+  `MongoClientSettingsBuilderCustomizer`, including a custom scheduler group or
   TLS context. Applications providing their own `MongoClientSettings` are left
   unchanged and do not receive this monitoring integration.
 - **WebClient timing and redirects:** This metric is a workaround, not an exact
@@ -204,7 +263,7 @@ responsibility.
 
 Integration code and tests are grouped into `tomcat`, `webclient`,
 `netty.nettyserver`, and `netty.mongoclient` packages under
-`pl.allegro.tech.queuewaittime`. The Netty event-loop sampler and properties shared
+`pl.allegro.tech.queuewaittime`. The Netty scheduler sampler and properties shared
 by Reactor Netty and MongoDB live in the `netty` package.
 
 ```bash

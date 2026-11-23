@@ -12,11 +12,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
-import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.mongodb.autoconfigure.MongoClientSettingsBuilderCustomizer
 import org.springframework.boot.mongodb.autoconfigure.MongoReactiveAutoConfiguration
 import org.springframework.context.annotation.Bean
-import pl.allegro.tech.queuewaittime.netty.EventLoopLagProperties
+import pl.allegro.tech.queuewaittime.schedulerlag.SchedulerLagProperties
 import reactor.core.publisher.Flux
 
 @AutoConfiguration(
@@ -38,16 +37,15 @@ import reactor.core.publisher.Flux
 @ConditionalOnBean(MeterRegistry::class)
 @ConditionalOnMissingBean(MongoClientSettings::class)
 @ConditionalOnProperty(
-    prefix = "allegro-tech.event-loop-lag",
+    prefix = "allegro-tech.scheduler-lag",
     name = ["enabled"],
     havingValue = "true",
     matchIfMissing = true,
 )
-@EnableConfigurationProperties(EventLoopLagProperties::class)
-class ReactiveMongoQueueWaitTimeAutoConfiguration {
+class ReactiveMongoEventLoopLagAutoConfiguration {
     @Bean
     fun mongoEventLoopLagCustomizer(
         meterRegistry: ObjectProvider<MeterRegistry>,
-        properties: EventLoopLagProperties,
+        properties: SchedulerLagProperties,
     ): MongoClientSettingsBuilderCustomizer = MongoEventLoopLagCustomizer(meterRegistry.getObject(), properties)
 }

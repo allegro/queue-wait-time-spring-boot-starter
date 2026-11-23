@@ -3,15 +3,15 @@ package pl.allegro.tech.queuewaittime.netty.nettyserver
 import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.beans.factory.DisposableBean
 import org.springframework.boot.reactor.netty.NettyServerCustomizer
-import pl.allegro.tech.queuewaittime.netty.EventLoopLagMonitor
-import pl.allegro.tech.queuewaittime.netty.EventLoopLagProperties
+import pl.allegro.tech.queuewaittime.netty.NettySchedulerLagMonitor
+import pl.allegro.tech.queuewaittime.schedulerlag.SchedulerLagProperties
 import reactor.netty.http.server.HttpServer
 
 internal class ReactorNettyServerEventLoopLagCustomizer(
     meterRegistry: MeterRegistry,
-    properties: EventLoopLagProperties,
+    properties: SchedulerLagProperties,
 ) : NettyServerCustomizer, DisposableBean {
-    private val monitor = EventLoopLagMonitor(meterRegistry, properties.interval, "server")
+    private val monitor = NettySchedulerLagMonitor(meterRegistry, properties.interval, "server")
 
     override fun apply(server: HttpServer): HttpServer =
         server.doOnBind { configuration ->

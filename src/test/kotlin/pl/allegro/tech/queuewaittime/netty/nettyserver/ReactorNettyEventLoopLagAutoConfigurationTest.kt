@@ -12,7 +12,8 @@ import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.boot.reactor.netty.NettyServerCustomizer
 import org.springframework.boot.test.context.FilteredClassLoader
 import org.springframework.boot.test.context.runner.ReactiveWebApplicationContextRunner
-import pl.allegro.tech.queuewaittime.netty.EventLoopLagProperties
+import pl.allegro.tech.queuewaittime.schedulerlag.SchedulerLagProperties
+import pl.allegro.tech.queuewaittime.schedulerlag.SchedulerLagPropertiesConfiguration
 import reactor.core.publisher.Mono
 import reactor.netty.http.client.HttpClient
 import reactor.netty.http.server.HttpServer
@@ -22,9 +23,14 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import java.util.function.Supplier
 
-internal class ReactorNettyQueueWaitTimeAutoConfigurationTest {
+internal class ReactorNettyEventLoopLagAutoConfigurationTest {
     private val baseContextRunner = ReactiveWebApplicationContextRunner()
-        .withConfiguration(AutoConfigurations.of(ReactorNettyQueueWaitTimeAutoConfiguration::class.java))
+        .withConfiguration(
+            AutoConfigurations.of(
+                ReactorNettyEventLoopLagAutoConfiguration::class.java,
+                SchedulerLagPropertiesConfiguration::class.java,
+            )
+        )
     private val contextRunner = baseContextRunner
         .withBean(MeterRegistry::class.java, Supplier { SimpleMeterRegistry() })
 
@@ -54,7 +60,7 @@ internal class ReactorNettyQueueWaitTimeAutoConfigurationTest {
                     try {
                         val group = resources.onServer(false)
                         await().atMost(Duration.ofSeconds(5)).untilAsserted {
-                            assertThat(registry.find("event_loop.lag").tag("type", "server").timers()).isNotEmpty
+                            assertThat(registry.find("scheduler.lag").tag("type", "server").timers()).isNotEmpty
                         }
                         val body = HttpClient.create().get().uri("http://127.0.0.1:${server.port()}")
                             .responseContent().aggregate().asString().block(Duration.ofSeconds(5))
@@ -62,7 +68,7 @@ internal class ReactorNettyQueueWaitTimeAutoConfigurationTest {
                         assertThat(body).isEqualTo("ok")
 
                         await().atMost(Duration.ofSeconds(5)).untilAsserted {
-                            val timers = registry.find("event_loop.lag")
+                            val timers = registry.find("scheduler.lag")
                                 .tag("type", "server").tag("executor", workerName.get()).timers()
                             assertThat(timers).isNotEmpty
                             assertThat(timers.maxOf { it.max(TimeUnit.MILLISECONDS) })
@@ -80,7 +86,7 @@ internal class ReactorNettyQueueWaitTimeAutoConfigurationTest {
                         assertThat(registry.isClosed).isFalse()
                         assertThat(group.isShuttingDown).isFalse()
                         group.forEach { it.submit {}.syncUninterruptibly() }
-                        val timers = registry.find("event_loop.lag").tag("type", "server").timers()
+                        val timers = registry.find("scheduler.lag").tag("type", "server").timers()
                         val count = timers.sumOf { it.count() }
                         await().during(Duration.ofMillis(100)).atMost(Duration.ofSeconds(5)).untilAsserted {
                             assertThat(timers.sumOf { it.count() }).isEqualTo(count)
@@ -101,10 +107,10 @@ internal class ReactorNettyQueueWaitTimeAutoConfigurationTest {
     @Test
     fun bindsTheSharedSamplingProperties() {
         contextRunner
-            .withPropertyValues("allegro-tech.event-loop-lag.interval=25ms")
+            .withPropertyValues("allegro-tech.scheduler-lag.interval=25ms")
             .run { context ->
-                assertThat(context).hasSingleBean(EventLoopLagProperties::class.java)
-                assertThat(context.getBean<EventLoopLagProperties>().interval)
+                assertThat(context).hasSingleBean(SchedulerLagProperties::class.java)
+                assertThat(context.getBean<SchedulerLagProperties>().interval)
                     .isEqualTo(Duration.ofMillis(25))
             }
     }
@@ -112,7 +118,7 @@ internal class ReactorNettyQueueWaitTimeAutoConfigurationTest {
     @Test
     fun canDisableServerMonitoring() {
         contextRunner
-            .withPropertyValues("allegro-tech.event-loop-lag.enabled=false")
+            .withPropertyValues("allegro-tech.scheduler-lag.enabled=false")
             .run { context ->
                 assertThat(context).hasNotFailed()
                 assertThat(context).doesNotHaveBean(NettyServerCustomizer::class.java)

@@ -1,4 +1,7 @@
 pl.allegro.tech.queuewaittime.tomcat.TomcatQueueWaitTimeAutoConfiguration
-pl.allegro.tech.queuewaittime.netty.nettyserver.ReactorNettyQueueWaitTimeAutoConfiguration
-pl.allegro.tech.queuewaittime.netty.mongoclient.ReactiveMongoQueueWaitTimeAutoConfiguration
+pl.allegro.tech.queuewaittime.netty.nettyserver.ReactorNettyEventLoopLagAutoConfiguration
+pl.allegro.tech.queuewaittime.netty.mongoclient.ReactiveMongoEventLoopLagAutoConfiguration
 pl.allegro.tech.queuewaittime.webclient.WebClientQueueWaitTimeAutoConfiguration
+pl.allegro.tech.queuewaittime.virtualthreads.VirtualThreadsSchedulerLagConfiguration
+pl.allegro.tech.queuewaittime.schedulerlag.SchedulerLagPropertiesConfiguration
+pl.allegro.tech.queuewaittime.micrometer.ExecutorIdleRenameAutoConfiguration
