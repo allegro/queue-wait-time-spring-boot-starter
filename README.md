@@ -348,7 +348,7 @@ because the threads compete for CPU time.
 
 ## Development
 
-Use regular Gradle command, for example:
+Use regular Gradle commands, for example:
 ```bash
 ./gradlew check
 ```
