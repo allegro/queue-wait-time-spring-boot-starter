@@ -32,8 +32,8 @@ Monitoring requires a Micrometer MeterRegistry.
 - [Taming queues](#taming-queues)
 - [Development](#development)
 - [Appendix](./APPENDIX.md)
-    - [List of all Metrics](./APPENDIX.md/#metrics)
-    - [List of all Properties](./APPENDIX.md/#properties)
+    - [Metrics](./APPENDIX.md/#metrics)
+    - [Properties](./APPENDIX.md/#properties)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -58,7 +58,7 @@ measurements in your own environment.
 
 We’re open to feedback!
 
-## Why queue-wait-time and scheduling-delays metric matter
+## Why these metrics matter
 
 Often, only **a single timing metric** is available. Depending on where the
 measurement starts and stops, it may capture:
