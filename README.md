@@ -1,109 +1,286 @@
 # Queue wait time Spring Boot starter
 
-Micrometer monitoring for Tomcat request threads. Also, Reactor Netty server event
-loops, reactive MongoDB driver event loops, and Reactor Netty-backed WebClient requests.
+Filling observability gaps.
 
-## Starter main goal
+Execution-time metrics answer:
 
-Fix performance issues in Spring Boot applications.
-They can be present on a daily-basis at any CPU utilization level
+> How long did a thread spend running a given task?
+
+They may miss another question:
+
+> How long did the task wait in a queue before a thread picked it up?
+
+This starter fills that gap with metrics for:
+
+- Task queue wait time
+- Scheduling delays
+
+Monitoring requires a Micrometer MeterRegistry.
+
+# Table of Contents
+
+- [Installation](#installation)
+- [Project status](#project-status)
+- [Why queue-wait-time and scheduling-delays metric matter](#why-queue-wait-time-and-scheduling-delays-metric-matter)
+- [Metrics](#metrics)
+    - [Queue Wait Time Metrics](#queue-wait-time-metrics)
+        - [Tomcat queue wait time metrics](#tomcat-queue-wait-time-metrics)
+        - [WebClient queue wait time metrics](#webclient-queue-wait-time-metrics)
+    - [Scheduler Lag Metrics](#scheduler-lag-metrics)
+        - [Scheduler metrics interpretation](#scheduler-metrics-interpretation)
+- [Micrometer executor metric naming](#micrometer-executor-metric-naming)
+- [Taming queues](#taming-queues)
+- [Development](#development)
+- [Appendix](./APPENDIX.md)
+    - [List of all Metrics](./APPENDIX.md/#metrics)
+    - [List of all Properties](./APPENDIX.md/#properties)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Installation
+
+Add the starter to your Spring Boot application's dependencies:
+
+```groovy
+implementation 'pl.allegro.tech.queuewaittime:queue-wait-time-spring-boot-starter:<version>'
+```
+
+Requirements:
+- Java 21
+- Spring Boot 4.1
 
 ## Project status
 
 **This project is in an early stage of development.** It has been tested at
 Allegro, but remains experimental. APIs, configuration properties, and metric
 names may change as the project evolves. Validate the integration behavior and
-measurements in your own environment before relying on them.
+measurements in your own environment.
 
-## Usage
+We’re open to feedback!
 
-Add the starter alongside the Spring Boot dependencies used by your application:
+## Why queue-wait-time and scheduling-delays metric matter
 
-```groovy
-implementation 'pl.allegro.tech.queuewaittime:queue-wait-time-spring-boot-starter:<version>'
-```
+Often, only **a single timing metric** is available. Depending on where the
+measurement starts and stops, it may capture:
 
-Provide a Micrometer `MeterRegistry`, for example through Spring Boot Actuator.
-The starter automatically enables the integrations available on the application's
-classpath. It does not bring in a web server, HTTP client implementation, MongoDB
-driver, or metrics exporter.
-Without an application-provided `MeterRegistry`, monitoring remains disabled;
-the starter never creates a fallback registry.
+- Task Queue wait time
+- Task execution time
+    - e.g. a server-side timer that starts when a worker
+      thread begins handling the request
+- Both queue wait time and execution time
+    - e.g. client-observed response
+      time, which also includes network latency and other overhead
 
-Built against Spring Boot 4.1.1 and Java 21.
+A single metric does not provide a separate view of waiting and execution.
+Queueing delays may go unnoticed - or be mistaken for slow task execution.
+If client-side latency exceeds the server's reported execution time,
+the difference may be incorrectly attributed to the network rather than
+time spent waiting in a queue.
 
-Starter-specific configuration uses the `allegro-tech.` prefix. Update existing
-unprefixed keys; standard Spring Boot `server.tomcat.*` and `spring.*` settings
-remain unchanged.
+# Metrics
 
-## Metrics
+This section describes the metrics exposed by the starter and how to interpret them.
 
-| Integration                      | Measurement                                                                | Micrometer timer                                                                                         |
-|----------------------------------|----------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
-| Tomcat platform threads          | Time between submitting a request task and starting its execution          | `executor.queue.wait.time`, tagged with `name=tomcat`                                                    |
-| Tomcat virtual threads           | Initial delay between submitting a request task and starting its execution | `executor.queue.wait.time`, tagged with `name=tomcat-virtual-threads`                                    |
-| Default virtual-thread scheduler | Positive Scheduler lag, sampled every 10 ms by default                     | `scheduler.lag`, tagged with `executor` and `type=VirtualThreadDefaultScheduler`, and `status=unhealthy` |
-| Reactor Netty server scheduler   | Positive scheduler lag, sampled every 10 ms by default                     | `scheduler.lag`, tagged with `executor`, `type=server`, and `status=unhealthy`                           |
-| Reactive MongoDB scheduler       | Positive scheduler lag, sampled every 10 ms by default                     | `scheduler.lag`, tagged with `executor`, `type=mongo`, and `status=unhealthy`                            |
-| WebClient with Reactor Netty     | Time from exchange subscription until Reactor Netty's request callback     | `webclient_queue_wait_time`                                                                              |
+## Queue Wait Time Metrics
 
-Scheduler lag measures scheduling delays, not exact per-request queue wait time.
-The `scheduler.sample` counters use `executor`, `type`, and
-`status=healthy` or `status=unhealthy` tags. The `scheduler.lag` timer
-records only unhealthy samples and uses `status=unhealthy`.
-Tomcat uses Micrometer to measure both task waiting time and task execution
-time. Platform and virtual thread monitoring follow
-`spring.threads.virtual.enabled`.
+No new measurements are recorded when there is no traffic.
 
-Tomcat's platform-thread pool follows the configured
-`server.tomcat.threads` pool sizes and queue capacity. It shuts down after the web
-server and uses normal thread priority. Sampling tasks are canceled when the
-application context closes. Reactor Netty keeps ownership of its server event
-loops; stopping monitoring does not shut them down.
+### Tomcat queue wait time metrics
 
-## Why these metrics matter
+Time between submitting a request task and starting its execution.
 
-**Slow requests are not always slow work. They may spend most of their time
-waiting for a thread to start processing.** A single latency metric can hide that
-distinction: depending on its boundaries, it may measure waiting, processing, or
-both.
-
-For a simplified request path, ignoring network and other phases:
+> Simplified server-side latency = queue wait time + request handling time(http.server.requests)
 
 ```text
-request latency = queue wait time + processing time
+New request
+↓
+http-nio-{port}-Poller <- this thread adds tasks to a queue
+↓
+Queue
+↓
+Tomcat Worker Threads (Platform or Virtual)
 ```
 
-| If your only metric measures...                                           | You see... | What may actually be happening                                                                                        |
-|---------------------------------------------------------------------------|------------|-----------------------------------------------------------------------------------------------------------------------|
-| Processing time, for example a server timer starting inside the handler   | `100 ms`   | The request also waited `X ms` before processing. With `80 ms` in a queue, the customer waits `180 ms`, not `100 ms`. |
-| Total latency, for example a client timer covering waiting and processing | `100 ms`   | The request spent `80 ms` waiting and only `20 ms` processing. The total alone does not explain the split.            |
-| Queue wait time                                                           | `80 ms`    | Processing time is still unknown, so queue wait alone cannot tell you the customer's total latency.                   |
+| Integration             | Micrometer timer                                                      |
+|-------------------------|-----------------------------------------------------------------------|
+| Tomcat Platform threads | `executor.queue.wait.time`, tagged with `name=tomcat`                 |
+| Tomcat Virtual threads  | `executor.queue.wait.time`, tagged with `name=tomcat-virtual-threads` |
 
-**These metrics are especially useful for performance debugging, load testing,
-and tuning.** Used alongside existing response-time metrics, throughput, and
-profiling, they help you:
+#### Known limitations
+- For Tomcat with `Platform Threads`
+    - a dedicated Thread Pool is created [TomcatPlatformThreadsWebServerCustomizer.kt](src/main/kotlin/pl/allegro/tech/queuewaittime/tomcat/TomcatPlatformThreadsWebServerCustomizer.kt)
+        - Thread names use the `allegro-tech-tomcat-handler-`
+        - Spring Boot apps with dedicated management port may not work as expected
+- For Tomcat with `Virtual Threads`
+    - Only the initial task-start delay is measured by `executor.queue.wait.time`, tagged with `name=tomcat-virtual-threads`
+    - For virtual-thread scheduler monitoring, see [Scheduler Lag Metrics](#scheduler-lag-metrics)
 
-- Reveal time spent waiting for a thread that response-time metrics alone can
-  hide.
-- Investigate whether rising latency comes from waiting, slower processing, or
-  both, instead of assuming the application code itself became slower.
-- Focus performance work on the actual bottleneck and verify whether a change
-  improves latency under load, including the slowest requests.
+#### Properties
+Configuration options for this integration:
 
-The signals have different boundaries: Tomcat measures time waiting for a thread.
-Scheduler lag indicates scheduling delays, not exact queue time for each request.
-The WebClient metric approximates the interval before an outbound request is sent
-(see [Known limitations](#known-limitations)). These signals complement
-response-time metrics; they are not
-interchangeable phases to add together or subtract from unrelated latency
-percentiles.
+```yaml
+allegro-tech:
+  tomcat:
+    queue-wait-time:
+      enabled: true #default
+```
+Standard Spring Boot `server.tomcat.*` properties remain unchanged.
 
-### Taming queues
 
-When queueing or scheduler lag contributes to latency during normal application
-traffic, consider isolating work rather than letting unrelated operations compete
-for the same worker pool:
+### WebClient queue wait time metrics
+
+Time from exchange subscription until Reactor Netty's request callback is executed.
+It requires `ReactorClientHttpConnector` as a `ClientHttpConnector` in Spring Boot's `WebClient.Builder`
+
+> Simplified client-side latency(http.client.requests) = queue wait time + actual client response time
+
+| Integration                  | Micrometer timer            |
+|------------------------------|-----------------------------|
+| WebClient with Reactor Netty | `webclient.queue.wait.time` |
+
+#### Known limitations
+Create WebClient by using `WebClient.Builder` factory.
+
+This metric measures the time from exchange subscription until Reactor Netty
+is about to send the request.
+This may include scheduling delays, connection acquisition,
+and connection setup - not just queue wait time.
+
+By default, Spring Boot applications using Reactor Netty for both the server
+and WebClient share event-loop resources.
+
+Only delays occurring after exchange subscription are measured.
+Time spent waiting before subscription is not included.
+
+#### Properties
+Configuration options for this integration:
+```yaml
+allegro-tech:
+  webclient:
+    queue-wait-time:
+      enabled: true #default
+```
+Standard Spring Boot `server.tomcat.*` properties remains unchanged.
+
+
+## Scheduler Lag Metrics
+
+Scheduler lag is sampled periodically, regardless of application traffic -
+including when there is no traffic at all.
+
+> This is similar to event-loop delay in JavaScript, but samples are classified
+> as `healthy` or `unhealthy`.
+>
+> For unhealthy samples, `scheduler.lag` records `diff - 2 × interval`,
+> not the full gap between probe executions.
+
+These metrics are recorded for:
+
+- Netty
+- Virtual Threads
+- Reactive MongoDB
+
+Metrics exposed:
+
+- Counters `scheduler.sample`
+    - Used to calculate the proportion of unhealthy sampling windows.
+- Timer `scheduler.lag`
+
+Both metrics use the following tags:
+
+- `executor` — the event-loop thread name or virtual-thread scheduler name
+- `type` — `server`, `mongo`, or `VirtualThreadDefaultScheduler`
+- `status` — `healthy` or `unhealthy`
+    - Always `unhealthy` for the `scheduler.lag` timer.
+
+These metrics help answer:
+
+- What proportion of sampling windows is classified as unhealthy?
+- How far beyond the healthy threshold do unhealthy sampling gaps extend?
+
+#### Properties
+
+Configuration options for this integration:
+
+```yaml
+allegro-tech:
+  scheduler-lag:
+    enabled: true
+    interval: 10ms
+```
+
+## Scheduler metrics interpretation
+
+The monitoring probe is expected to run at the configured interval
+(10ms by default). Each execution measures the gap since the previous execution.
+
+On each execution:
+
+- Calculate `diff`, the gap between the current and previous execution
+- For a healthy scheduler:
+    - the expected gap between probe executions is the configured interval
+    - increment only `scheduler.sample{status=healthy}` with 1
+- For an unhealthy scheduler:
+    - record `diff - 2 × interval` in the `scheduler.lag` timer
+    - record a weighted sample in the `scheduler.sample` counter
+        - a single unhealthy sample may represent multiple missed sampling windows
+
+The gap between probes does not reveal exactly when other work started or ended.
+For example, a task could run:
+
+- From t=9ms to t=11ms
+- From t=1ms to t=19ms
+
+These tasks have very different execution times, but both cases remain within
+the default 20ms classification threshold.
+
+For `interval=10ms`, this sets the cutoff at `2 × 10ms = 20ms`:
+
+- `diff ≤ 20ms`: `healthy`, sample counter `+1`.
+- `diff > 20ms`: `unhealthy`, sample counter `+floor(diff / interval)`.
+
+Only unhealthy samples update `scheduler.lag`, recording `diff - 2 × interval`.
+Example: a 67ms gap adds six unhealthy windows and records 47ms of lag.
+
+#### Known limitations
+
+- For reactive MongoDB, a dedicated event-loop group is created by
+  [MongoEventLoopLagCustomizer.kt](src/main/kotlin/pl/allegro/tech/queuewaittime/netty/mongoclient/MongoEventLoopLagCustomizer.kt).
+
+## Micrometer executor metric naming
+
+The starter uses Micrometer to monitor Tomcat's request executor.
+Micrometer's `executor.idle` timer measures how long a task waits before execution,
+but its name does not make that clear.
+By default, the starter uses a MeterFilter to rename it to `executor.queue.wait.time`,
+making the measurement explicit.
+Only the name changes; tags and measurements are preserved.
+
+#### Properties
+
+Configuration options for this integration:
+```yaml
+allegro-tech:
+  rename-executor-idle-to-executor-queue-wait-time:
+    enabled: true #default
+```
+
+#### Known limitations
+Any thread pool which is monitored with:
+```java
+Executor monitoredExecutor = ExecutorServiceMetrics.monitor(registry, executor, executorName, tags); 
+```
+
+Will expose `executor.queue.wait.time` instead of `executor.idle` metric.
+
+## Taming queues
+
+The source of queueing or scheduler lag should be identified before introducing
+workload isolation. Possible causes include blocking I/O, slow dependencies,
+CPU saturation, or insufficient concurrency.
+
+If unrelated operations compete for the same worker pool, workload isolation may
+help prevent one operation from delaying another:
 
 - **Thread-pool operation isolation (bulkheads):** split work horizontally into
   separate pools for different workloads or dependencies, so a slow operation
@@ -118,153 +295,41 @@ to another queue does not by itself increase processing capacity.
 
 **Remember context propagation when crossing thread-pool or stage boundaries.**
 `ThreadLocal` values, such as tracing context, logging MDC, or security context,
-are not automatically transferred to another thread. Capture and restore the
-relevant context for each task, then restore the worker thread's previous context
-afterward to avoid leaking state between requests. In reactive flows, account
-for Reactor Context as well rather than assuming a request stays on one thread.
+are not automatically transferred with a task to another thread.
+Framework-provided context propagation should be used where available.
+When manual propagation is required, the relevant context must be captured and
+restored for each task. The worker thread's previous context must then be restored
+to avoid leaking state between requests.
+
+In reactive flows, Reactor Context is associated with the subscription rather
+than a single thread. Appropriate propagation support is needed when bridging
+it to `ThreadLocal`-based APIs.
 
 The starter measures waiting and scheduling delays; it does not configure
 workload isolation or context propagation.
 
-## Tomcat configuration
+#### Known limitations
 
-| Property                                      | Default | Description                                                               |
-|-----------------------------------------------|---------|---------------------------------------------------------------------------|
-| `allegro-tech.tomcat.queue-wait-time.enabled` | `true`  | Enable queue wait time monitoring for Tomcat platform and virtual threads |
+These metrics reveal queueing and scheduling delays, but do not identify
+the application code or operations responsible for them. Identifying and
+fixing the underlying cause requires further investigation, such as
+profiling or tracing.
 
-Set this property to `false` to leave Spring Boot's Tomcat thread configuration unchanged.
+At Allegro, approaches that have helped include:
 
-## Micrometer executor metric naming
+- Isolating different endpoints in separate thread pools
+- Moving JSON parsing to a dedicated thread pool
 
-By default, a `MeterFilter` renames `executor.idle` to `executor.queue.wait.time`
-in Spring Boot-managed meter registries. It applies to every meter with that
-exact name, not only Tomcat metrics, and preserves tags and measurements.
+**Healthy scheduler samples and low queue wait time do not guarantee
+low response time.**
 
-| Property                                                        | Default | Description                                         |
-|-----------------------------------------------------------------|---------|-----------------------------------------------------|
-| `allegro-tech.rename-executor-idle-to-executor-queue-wait-time` | `true`  | Rename Micrometer's executor queue wait time metric |
-
-Set the flag to `false` to retain the original `executor.idle` name:
-
-```yaml
-allegro-tech:
-  rename-executor-idle-to-executor-queue-wait-time: false
-```
-
-## Scheduler lag configuration
-
-The same settings control Reactor Netty server, reactive MongoDB, and the default
-virtual-thread scheduler monitoring. They do not affect Tomcat queue wait time
-monitoring.
-
-Virtual-thread scheduler monitoring starts when `spring.threads.virtual.enabled=true`
-and a `MeterRegistry` is available. It also works in non-web Spring applications.
-The sampling probe is stopped when the application context closes.
-
-| Property                              | Default | Description                                           |
-|---------------------------------------|---------|-------------------------------------------------------|
-| `allegro-tech.scheduler-lag.enabled`  | `true`  | Enable scheduler lag monitoring                       |
-| `allegro-tech.scheduler-lag.interval` | `10ms`  | Positive sampling interval for all scheduler monitors |
-
-```yaml
-allegro-tech:
-  scheduler-lag:
-    enabled: true
-    interval: 10ms
-```
-
-### Interpreting scheduler samples
-
-`diff` is the gap between probe measurements, not task execution time.
-We require two missed nominal sampling windows to confidently flag scheduler
-occupancy longer than one interval. For `interval=10ms`, this sets the cutoff at
-`2 × 10ms = 20ms`:
-
-- `diff ≤ 20ms`: `healthy`, sample counter `+1`.
-- `diff > 20ms`: `unhealthy`, sample counter `+floor(diff / interval)`.
-
-Only unhealthy samples update `scheduler.lag`, recording `diff - 2 × interval`.
-Example: a 67ms gap adds six unhealthy windows and records 47ms of lag.
-
-### Window-based ratios
-
-Calculate ratios from counter rates over the same observation window and for the
-same executor/type grouping:
-
-```text
-total_rate = healthy_rate + unhealthy_rate
-healthy_ratio = healthy_rate / total_rate
-unhealthy_ratio = unhealthy_rate / total_rate
-```
-
-These ratios describe weighted sampling windows, not the number of probe
-executions or an exact fraction of wall-clock time. A 100ms gap contributes ten
-unhealthy windows, while each healthy observation contributes one.
-Interpret the ratios only when `total_rate > 0`.
-
-Normal fixed-delay or sleep-based sampling often produces gaps slightly above
-the configured interval. These samples remain healthy within the two-interval
-tolerance; a small timing overshoot alone is not evidence of an unhealthy scheduler.
-
-## WebClient monitoring
-
-The starter registers a `WebClientCustomizer` and a Reactor-specific
-`ClientHttpConnectorBuilderCustomizer`. Create clients from Spring Boot's injected
-`WebClient.Builder` with a Reactor Netty connector to use both customizations.
-The starter does not create client, connector, or Netty resource beans; ownership
-and shutdown remain with Spring Boot or the application. This integration also
-works in applications without a web server.
-
-Every outbound request attempt reaching Reactor Netty's `doOnRequest` callback is
-measured, without requiring a special header. The interval starts on subscription
-and ends when Reactor Netty is about to send the request. Without automatic
-redirects, it does not include waiting for the response. It is not pure scheduler
-queue time; see [Known limitations](#known-limitations) for redirect behavior.
-
-Clients created with `WebClient.create()` or manually supplied builders/connectors
-do not automatically receive both customizations. Apply the relevant customizer
-beans explicitly when bypassing Boot's configuration. Other connector types, such
-as JDK, remain usable but do not record this Reactor-specific measurement.
-
-## Reactive MongoDB configuration
-
-Mongo monitoring requires the reactive MongoDB driver, Micrometer, and Netty.
-For Mongo-only applications, add `io.netty:netty-handler` as well as the reactive
-MongoDB starter; WebFlux applications using Reactor Netty already provide it.
-The starter supplies a monitored Netty transport through a
-`MongoClientSettingsBuilderCustomizer` and closes its scheduler group when the
-application context shuts down.
-
-Applications supplying their own `MongoClientSettings` are left unchanged.
-General MongoDB connection settings and document converters remain Spring Boot's
-responsibility.
-
-## Known limitations
-
-- **Tomcat virtual-thread metrics:** `executor.queue.wait.time` measures the initial
-  task-start delay. Separately, `scheduler.lag` with
-  `type=VirtualThreadDefaultScheduler` samples lag in the shared default scheduler
-  used by Tomcat and other virtual threads. It is enabled when Spring virtual threads and
-  scheduler monitoring are enabled. This is a scheduler-wide signal, not an exact
-  measurement of each request's rescheduling delays.
-- **MongoDB transport customization:** Monitoring configures its own Netty
-  transport and can overwrite transport settings applied by an earlier
-  `MongoClientSettingsBuilderCustomizer`, including a custom scheduler group or
-  TLS context. Applications providing their own `MongoClientSettings` are left
-  unchanged and do not receive this monitoring integration.
-- **WebClient timing and redirects:** This metric is a workaround, not an exact
-  per-request queue-wait measurement. Automatic redirects reuse the subscription
-  start time, so measurements for later attempts can include time spent waiting
-  for an earlier response. Treat the metric as a diagnostic signal rather than
-  an exact separation of queue wait and response time.
+For example, 200 worker threads parsing JSON on 10 CPU cores may show
+little or no executor queue wait time, while task execution remains slow
+because the threads compete for CPU time.
 
 ## Development
 
-Integration code and tests are grouped into `tomcat`, `webclient`,
-`netty.nettyserver`, and `netty.mongoclient` packages under
-`pl.allegro.tech.queuewaittime`. The Netty scheduler sampler and properties shared
-by Reactor Netty and MongoDB live in the `netty` package.
-
+Use regular Gradle command, for example:
 ```bash
 ./gradlew check
 ```

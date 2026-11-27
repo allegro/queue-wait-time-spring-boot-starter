@@ -9,8 +9,8 @@ import org.springframework.context.annotation.Bean
 @AutoConfiguration
 @ConditionalOnClass(MeterFilter::class)
 @ConditionalOnProperty(
-    prefix = "allegro-tech",
-    name = ["rename-executor-idle-to-executor-queue-wait-time"],
+    prefix = "allegro-tech.rename-executor-idle-to-executor-queue-wait-time",
+    name = ["enabled"],
     havingValue = "true",
     matchIfMissing = true,
 )

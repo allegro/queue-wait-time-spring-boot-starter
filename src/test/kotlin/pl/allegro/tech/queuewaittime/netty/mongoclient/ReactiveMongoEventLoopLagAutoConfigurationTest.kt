@@ -30,7 +30,7 @@ internal class ReactiveMongoEventLoopLagAutoConfigurationTest {
             )
         )
     private val contextRunner = baseContextRunner
-        .withBean(MeterRegistry::class.java, Supplier { SimpleMeterRegistry() })
+        .withBean(MeterRegistry::class.java, { SimpleMeterRegistry() })
 
     @Test
     fun recordsSchedulingLagReusesTheGroupAndShutsItDown() {
@@ -40,7 +40,7 @@ internal class ReactiveMongoEventLoopLagAutoConfigurationTest {
             val customizer = context.getBean<MongoClientSettingsBuilderCustomizer>()
             val builder = MongoClientSettings.builder()
             customizer.customize(builder)
-            group = (builder.build().transportSettings as NettyTransportSettings).eventLoopGroup
+            group = requireNotNull((builder.build().transportSettings as NettyTransportSettings).eventLoopGroup)
 
             val anotherBuilder = MongoClientSettings.builder()
             customizer.customize(anotherBuilder)
@@ -119,7 +119,7 @@ internal class ReactiveMongoEventLoopLagAutoConfigurationTest {
         val settings = MongoClientSettings.builder().build()
 
         contextRunner
-            .withBean(MongoClientSettings::class.java, Supplier { settings })
+            .withBean(MongoClientSettings::class.java, { settings })
             .run { context ->
                 assertThat(context).hasNotFailed()
                 assertThat(context.getBean<MongoClientSettings>()).isSameAs(settings)

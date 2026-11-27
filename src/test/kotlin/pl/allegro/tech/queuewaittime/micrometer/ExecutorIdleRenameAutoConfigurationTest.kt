@@ -52,7 +52,7 @@ internal class ExecutorIdleRenameAutoConfigurationTest {
     @ValueSource(booleans = [false, true])
     fun respectsRenameFlag(enabled: Boolean) {
         contextRunner
-            .withPropertyValues("allegro-tech.rename-executor-idle-to-executor-queue-wait-time=$enabled")
+            .withPropertyValues("allegro-tech.rename-executor-idle-to-executor-queue-wait-time.enabled=$enabled")
             .run { context ->
                 assertThat(context).hasNotFailed()
                 recordTaskAndAssertMetricName(

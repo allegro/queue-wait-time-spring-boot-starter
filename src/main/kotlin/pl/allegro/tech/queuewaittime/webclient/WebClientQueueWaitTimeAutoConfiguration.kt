@@ -5,6 +5,7 @@ import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.http.client.autoconfigure.reactive.ClientHttpConnectorBuilderCustomizer
 import org.springframework.boot.http.client.reactive.ReactorClientHttpConnectorBuilder
 import org.springframework.boot.webclient.WebClientCustomizer
@@ -24,6 +25,12 @@ import reactor.netty.http.client.HttpClient
     MeterRegistry::class,
 )
 @ConditionalOnBean(MeterRegistry::class)
+@ConditionalOnProperty(
+    prefix = "allegro-tech.webclient.queue-wait-time",
+    name = ["enabled"],
+    havingValue = "true",
+    matchIfMissing = true,
+)
 class WebClientQueueWaitTimeAutoConfiguration {
     @Bean
     fun webClientQueueWaitTimeCustomizer(): WebClientCustomizer = WebClientQueueWaitTimeCustomizer()

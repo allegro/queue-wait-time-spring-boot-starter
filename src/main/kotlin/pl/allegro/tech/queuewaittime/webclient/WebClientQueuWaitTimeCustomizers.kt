@@ -26,7 +26,7 @@ internal class ReactorClientHttpConnectorQueueWaitTimeCustomizer(
             httpClient.doOnRequest { request, _ ->
                 request.currentContextView().getOrEmpty<Long>(WEB_CLIENT_START_TIME_CONTEXT_KEY)
                     .ifPresent { startTime ->
-                        meterRegistry.timer("webclient_queue_wait_time")
+                        meterRegistry.timer("webclient.queue.wait.time")
                             .record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS)
                     }
             }

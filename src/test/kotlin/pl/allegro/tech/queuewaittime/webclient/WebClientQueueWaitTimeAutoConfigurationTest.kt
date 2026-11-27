@@ -54,6 +54,28 @@ internal class WebClientQueueWaitTimeAutoConfigurationTest {
     }
 
     @Test
+    fun enablesMonitoringWhenExplicitlyEnabled() {
+        contextRunner
+            .withPropertyValues("allegro-tech.webclient.queue-wait-time.enabled=true")
+            .run { context ->
+                assertThat(context).hasNotFailed()
+                assertThat(context).hasSingleBean(WebClientCustomizer::class.java)
+                assertThat(context).hasSingleBean(ClientHttpConnectorBuilderCustomizer::class.java)
+            }
+    }
+
+    @Test
+    fun disablesMonitoringWhenExplicitlyDisabled() {
+        contextRunner
+            .withPropertyValues("allegro-tech.webclient.queue-wait-time.enabled=false")
+            .run { context ->
+                assertThat(context).hasNotFailed()
+                assertThat(context).doesNotHaveBean(WebClientCustomizer::class.java)
+                assertThat(context).doesNotHaveBean(ClientHttpConnectorBuilderCustomizer::class.java)
+            }
+    }
+
+    @Test
     fun doesNotConfigureMonitoringWithoutARegistry() {
         baseContextRunner.run { context ->
             assertThat(context).hasNotFailed()
@@ -97,7 +119,7 @@ internal class WebClientQueueWaitTimeAutoConfigurationTest {
                         .retrieve().bodyToMono(String::class.java).block(Duration.ofSeconds(5))
 
                     assertThat(body).isEqualTo("ok")
-                    val timer = context.getBean<MeterRegistry>().find("webclient_queue_wait_time").timer()
+                    val timer = context.getBean<MeterRegistry>().find("webclient.queue.wait.time").timer()
                     assertThat(timer).isNotNull
                     assertThat(timer!!.count()).isEqualTo(1)
                 }
@@ -127,7 +149,7 @@ internal class WebClientQueueWaitTimeAutoConfigurationTest {
 
                     assertThat(body).isEqualTo("ok")
                     assertThat(context.getBean<MeterRegistry>()
-                        .find("webclient_queue_wait_time").timers().sumOf { it.count() }).isZero()
+                        .find("webclient.queue.wait.time").timers().sumOf { it.count() }).isZero()
                 }
         } finally {
             server.disposeNow()
