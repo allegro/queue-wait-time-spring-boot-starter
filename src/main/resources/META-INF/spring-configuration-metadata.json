@@ -19,7 +19,13 @@
       "description": "Enable queue wait time monitoring for Tomcat platform and virtual threads."
     },
     {
-      "name": "allegro-tech.rename-executor-idle-to-executor-queue-wait-time",
+      "name": "allegro-tech.webclient.queue-wait-time.enabled",
+      "type": "java.lang.Boolean",
+      "defaultValue": true,
+      "description": "Enable queue wait time monitoring for WebClient with Reactor Netty."
+    },
+    {
+      "name": "allegro-tech.rename-executor-idle-to-executor-queue-wait-time.enabled",
       "type": "java.lang.Boolean",
       "defaultValue": true,
       "description": "Rename executor.idle to executor.queue.wait.time."

@@ -38,7 +38,7 @@ internal class TomcatPlatformThreadsWebServerCustomizer(
             60,
             TimeUnit.SECONDS,
             taskQueue,
-            TaskThreadFactory("custom-tomcat-handler-", true, Thread.NORM_PRIORITY),
+            TaskThreadFactory("allegro-tech-tomcat-handler-", true, Thread.NORM_PRIORITY),
         )
         taskQueue.setParent(tomcatExecutor)
         return tomcatExecutor

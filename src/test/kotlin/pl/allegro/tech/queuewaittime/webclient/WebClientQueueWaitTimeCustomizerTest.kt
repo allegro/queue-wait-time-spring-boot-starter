@@ -54,7 +54,7 @@ internal class WebClientQueueWaitTimeCustomizerTest {
                 .retrieve().bodyToMono(String::class.java).block(Duration.ofSeconds(5))
 
             assertThat(body).isEqualTo("ok")
-            val timer = registry.find("webclient_queue_wait_time").timer()
+            val timer = registry.find("webclient.queue.wait.time").timer()
             assertThat(timer).isNotNull
             assertThat(timer!!.count()).isEqualTo(1)
             assertThat(timer.totalTime(TimeUnit.NANOSECONDS)).isPositive()
@@ -103,7 +103,7 @@ internal class WebClientQueueWaitTimeCustomizerTest {
             assertThat(client.get().uri("http://127.0.0.1:${server.port()}")
                 .retrieve().bodyToMono(String::class.java).block(Duration.ofSeconds(5)))
                 .isEqualTo("ok")
-            assertThat(registry.find("webclient_queue_wait_time").timers().sumOf { it.count() }).isZero()
+            assertThat(registry.find("webclient.queue.wait.time").timers().sumOf { it.count() }).isZero()
         } finally {
             server.disposeNow()
         }
@@ -138,7 +138,7 @@ internal class WebClientQueueWaitTimeCustomizerTest {
 
             assertThat(body).isEqualTo("kept:also-kept")
             assertThat(callbacks.get()).isEqualTo(1)
-            assertThat(registry.get("webclient_queue_wait_time").timer().count()).isEqualTo(1)
+            assertThat(registry.get("webclient.queue.wait.time").timer().count()).isEqualTo(1)
             assertThat(connections.isDisposed).isFalse()
             assertThat(resources.isDisposed).isFalse()
         } finally {
@@ -169,7 +169,7 @@ internal class WebClientQueueWaitTimeCustomizerTest {
             val first = client.get().uri("/first").retrieve().bodyToMono(String::class.java).toFuture()
             try {
                 assertThat(firstReceived.await(5, TimeUnit.SECONDS)).isTrue()
-                val timer = registry.find("webclient_queue_wait_time").timer()
+                val timer = registry.find("webclient.queue.wait.time").timer()
                 assertThat(timer).isNotNull
                 assertThat(timer!!.count()).isEqualTo(1)
                 assertThat(first.isDone).isFalse()
