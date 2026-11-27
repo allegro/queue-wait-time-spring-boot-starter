@@ -47,7 +47,7 @@ implementation 'pl.allegro.tech.queuewaittime:queue-wait-time-spring-boot-starte
 
 Requirements:
 - Java 21
-- Spring Boot 4.1
+- Spring Boot 4.2
 
 ## Project status
 
