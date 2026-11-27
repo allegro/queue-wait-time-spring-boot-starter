@@ -214,6 +214,25 @@ allegro-tech:
 The monitoring probe is expected to run at the configured interval
 (10ms by default). Each execution measures the gap since the previous execution.
 
+```text
+Previous probe execution
+↓
+Wait for interval (10ms by default)
+↓
+Probe becomes ready to run
+↓
+Scheduler runs the probe ← other work may delay this
+↓
+diff = now - previous probe timestamp
+↓
+Classify the sample
+├─ healthy: diff ≤ 2 × interval
+│  └─ scheduler.sample{status=healthy} += 1
+└─ unhealthy: diff > 2 × interval
+   ├─ scheduler.sample{status=unhealthy} += floor(diff / interval)
+   └─ scheduler.lag records diff - 2 × interval
+```
+
 On each execution:
 
 - Calculate `diff`, the gap between the current and previous execution
